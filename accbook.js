@@ -1,9 +1,9 @@
 function onOpen() {
   var ui = SpreadsheetApp.getUi();
   ui.createMenu('AccBook')
-    .addItem('Calculate price cells', 'calcPriceCells')
-    .addItem('Calculate netvalue cells', 'calcNetvalueCells')
-    .addItem('Calculate change cells', 'calcChangeCells')
+    .addItem('Calcpricecells (select price cells)', 'calcPriceCells')
+    .addItem('Calcnetvaluecells (select netvalue cells)', 'calcNetvalueCells')
+    .addItem('Calculate change cells (select change cells)', 'calcChangeCells')
     .addItem('Calculate total and total change cells', 'calcTotalAndTotalChangeCells')
     .addToUi();
 }
@@ -19,7 +19,9 @@ function calcPriceCells() {
     var assetClassCell = sheet.getRange(Snapshot.assetClassRow, priceCell.getColumn());
     var assetClass = assetClassCell.getValue();
     Logger.log('assetClass: ' + assetClass);
-    priceCell.setValue(Snapshot.getPrice(assetClass));
+    var assetClassPrice = Snapshot.getPrice(assetClass);
+    if (assetClassPrice)
+      priceCell.setValue(assetClassPrice);
   }
 }
 function calcNetvalueCells() {  
@@ -37,7 +39,38 @@ function calcNetvalueCells() {
   }
 }
 function calcChangeCells() {
+  Logger.log('In calcChangeCells');
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var range = SpreadsheetApp.getActiveRange();
+  var snapshot = new Snapshot({cell: range.getCell(1, 1)});
+  var prevSnapshot = new Snapshot({cell:
+    sheet.getRange(
+      range.getCell(1, 1).getRow() - 4,
+      range.getCell(1, 1).getColumn()
+    ).getCell(1, 1)
+  });
+
+  Logger.log('Active range: ' + range.getA1Notation());
+  Logger.log('snapshot baserow: ' + snapshot.baseRow);
+  Logger.log('prev snapshot baserow: ' + prevSnapshot.baseRow);
+  var cols = range.getNumColumns();
   
+  for (var i=1; i<=cols; i++) {
+    var changeCell = range.getCell(1, i);
+    Logger.log('changecell' + changeCell.getA1Notation());
+    var currentNetvalueCell = 
+      sheet.getRange(snapshot.netvalueRow, changeCell.getColumn());
+    Logger.log('currentNetvalueCell' + currentNetvalueCell.getA1Notation());
+    var prevNetvalueCell = 
+      sheet.getRange(prevSnapshot.netvalueRow, changeCell.getColumn());
+    Logger.log('prevNetvalueCell' + prevNetvalueCell.getA1Notation());
+    
+    Logger.log('oldvalue newvalue ' + prevNetvalueCell.getValue() + ' ' + currentNetvalueCell.getValue());
+    var oldvalue = parseFloat(prevNetvalueCell.getValue());
+    var newvalue = parseFloat(currentNetvalueCell.getValue());
+    Logger.log('oldvalue newvalue' + oldvalue + newvalue);
+    changeCell.setValue((isNaN(newvalue) ? 0 : newvalue)  - (isNaN(oldvalue) ? 0 : oldvalue));
+  }
 }
 function calcTotalAndTotalChangeCells() {
   Logger.log('In calcTotalAndTotalChangeCells');
@@ -95,16 +128,18 @@ Snapshot.getPrice = function(assetClass) {
   if (Snapshot.fiatRates[assetClass]) {
     return Snapshot.fiatRates[assetClass];
   }
+  Logger.log('fiatRates', Snapshot.fiatRates);
   if (!Snapshot.cryptoRates) {
     Snapshot.cryptoRates = {};
-    var res, json, cryptos = ['BTC', 'ETH', 'LTC', 'XRP', 'REP', 'BTS'];
+    var res, json, cryptos = ['BTC', 'ETH', 'LTC', 'XRP', 'REP', 'BTS', 'MANA', 'KNC'];
     for (var i=0; i<cryptos.length; i++) {
-      res = UrlFetchApp.fetch('https://api.cryptonator.com/api/ticker/'+ cryptos[i].toLowerCase() +'-usd');
+      res = UrlFetchApp.fetch('https://api.cryptonator.com/api/ticker/'+ cryptos[i].toLowerCase() +'-usd', {followRedirects: true});
       json = JSON.parse(res.getContentText());
       Snapshot.cryptoRates[cryptos[i]] = json.ticker.price;
     }
-    Snapshot.cryptoRates['BTM'] = 0.105;
+    Snapshot.cryptoRates['BTM'] = 0.01;
   }
+  Logger.log('cryptoRates', Snapshot.cryptoRates);
   if (Snapshot.cryptoRates[assetClass]) {
     return Snapshot.cryptoRates[assetClass];
   }
